@@ -1,101 +1,65 @@
-##Objectives: To analyse the RNA seq data of 3 replicates of N2_eft-2 and wild type N2_control
+#!/bin/bash
 
-## Step 1: Set up working directory, create and activate conda environment
-mkdir 1_RNASeq
-cd 1_RNASeq
-conda create -n RNAseq
-conda activate RNAseq
+# Part 1: Installation 
+mamba install -y bioconda::sra-tools bioconda::fastqc bioconda::trimmomatic bioconda::star || {
+    echo "Installation failed for STAR, downloading directly from GitHub..."
+    mv /Users/geokf/Downloads/sratoolkit.3.1.1-mac-x86_64.tar.gz .
+    tar -xvzf sratoolkit.3.1.1-mac-x86_64.tar.gz
+}
 
-##Step 2: Install sra-tools
-conda install bioconda::sra-tools
-##Installation failed, downloadeded directly from github, moved it to the working directory and extract
-mv /Users/geokf/Downloads/sratoolkit.3.1.1-mac-x86_64.tar.gz .
-tar -xvzf sratoolkit.3.1.1-mac-x86_64.tar.gz
-
-##Step 3: Download one sample using FASTQ-DUMP
-./sratoolkit.3.1.1-mac-x86_64/bin/fastq-dump --split-files SRR30171833
-
-##Step 4: Download ref genome from igenomes websites
+# Part 2: Download reference genome
+echo "Downloading reference genome..."
 wget https://s3.amazonaws.com/igenomes.illumina.com/Caenorhabditis_elegans/Ensembl/WBcel235/Caenorhabditis_elegans_Ensembl_WBcel235.tar.gz
 tar -xvzf Caenorhabditis_elegans_Ensembl_WBcel235.tar.gz
 
-##Step 5: Install fastqc
-conda install bioconda::fastqc
+# Part 3: Generate STAR index
+echo "Generating STAR index..."
+STAR_DIR="./STAR-2.7.10b/MacOSX_x86_64"
+GENOME_DIR="STAR_index_149"
+mkdir -p "$GENOME_DIR"
 
-# Step 6: run FASTQC
-fastqc -t 8 SRR30171833_1.fastq SRR30171833_2.fastq
+"$STAR_DIR"/STAR --runThreadN 6 \
+    --runMode genomeGenerate \
+    --genomeDir "$GENOME_DIR" \
+    --genomeFastaFiles ./Caenorhabditis_elegans/Ensembl/WBcel235/Sequence/WholeGenomeFasta/genome.fa \
+    --sjdbGTFfile ./Caenorhabditis_elegans/Ensembl/WBcel235/Annotation/Genes/genes.gtf \
+    --sjdbOverhang 149
 
-##Step 7: Install trimmomatic
-conda install bioconda::trimmomatic
+# Part 4: Loop through SRR samples
+srr_samples=(SRR30171820 SRR30171818 SRR30171824 SRR30171833 SRR30171834)
 
-##Step 8: Trim raw reads using Trimmmomatic
-trimmomatic PE -threads 8 SRR30171833_1.fastq SRR30171833_2.fastq Paired_trim_1.fastq Unpar_1.fastq Paired_trim_2.fastq Unpar_2.fastq HEADCROP:10
+for srr in "${srr_samples[@]}"; do 
+    echo "Processing sample: ${srr}"
 
-## Step 9: Install Star aligner
-conda install bioconda::star
-### fail to download, download from github - ver 2.7.11b
-wget https://github.com/alexdobin/STAR/archive/2.7.11b.tar.gz
-tar -xzf 2.7.11b.tar.gz
-cd STAR-2.7.11be
-### fail to execute ver 2.7.11b, download older ver from github - ver 2.7.10b
-wget https://github.com/alexdobin/STAR/archive/2.7.10b.tar.gz
-tar -xzf 2.7.10b.tar.gz
-cd STAR-2.7.10b
+    # Step 4.1: Download the sample using fastq-dump
+    ./sra-tools/bin/fastq-dump --split-files "$srr"
 
-##Step 10: Generate star index
-./STAR_2.7.10b/MacOSX_x86_64/STAR --runThreadN 6 \
---runMode genomeGenerate \
---genomeDir STAR_index_149 \
---genomeFastaFiles /Users/geokf/1_RNASeq/Caenorhabditis_elegans/Ensembl/WBcel235/Sequence/WholeGenomeFasta/genome.fa \
---sjdbGTFfile /Users/geokf/1_RNASeq/Caenorhabditis_elegans/Ensembl/WBcel235/Annotation/Genes/genes.gtf \
---sjdbOverhang 149
+    # Step 4.2: Run FastQC on raw reads
+    echo "Running FastQC on raw reads for ${srr}..."
+    fastqc -t 8 "${srr}_1.fastq" "${srr}_2.fastq"
 
-##Step 11: Aligned trimmed reads to ref genome
-./STAR_2.7.10b/MacOSX_x86_64/STAR --runThreadN 6 \
---genomeDir STAR_index_149 \
---readFilesIn Paired_trim_1.fastq Paired_trim_2.fastq \
---outFileNamePrefix results/test1 \
---outSAMtype BAM SortedByCoordinate \
---quantMode GeneCounts
+    # Step 4.3: Trim raw reads using Trimmomatic
+    echo "Trimming reads for ${srr}..."
+    trimmomatic PE -threads 8 "${srr}_1.fastq" "${srr}_2.fastq" \
+        "${srr}_Paired_trim_1.fastq" "${srr}_Unpar_1.fastq" \
+        "${srr}_Paired_trim_2.fastq" "${srr}_Unpar_2.fastq" HEADCROP:10
 
-##Step 12: rename results dir to SRR30171833
-mv results SRR30171833
+    # Step 4.4: Run FastQC on trimmed reads
+    echo "Running FastQC on trimmed reads for ${srr}..."
+    fastqc -t 8 "${srr}_Paired_trim_1.fastq" "${srr}_Paired_trim_2.fastq"
 
-##Step 13: Clean up unnecessary file
-rm *.fastq
-
-##Step 14: write a loop for the remaining 5 files (loop the process of data download, fastqc, trimming, fastqc after trimming, alignment and remove fastqc)
-for srr in SRR30171818 SRR30171834 SRR30171833 SRR30171824; do 
-    echo "Start to download ${srr}";
-    ./sratoolkit.3.1.1-mac-x86_64/bin/fastq-dump --split-files $srr
-    echo "Starting FastQC ${srr}";
-    fastqc -t 8 ${srr}_1.fastq ${srr}_2.fastq
-    echo "Trimming ${srr}";
-    trimmomatic PE -threads 8 ${srr}_1.fastq ${srr}_2.fastq ${srr}_Paired_trim_1.fastq ${srr}_Unpar_1.fastq ${srr}_Paired_trim_2.fastq ${srr}_Unpar_2.fastq HEADCROP:10
-    echo "Starting FastQC ${srr}";
-    fastqc -t 8 ${srr}_Paired_trim_1.fastq ${srr}_Paired_trim_2.fastq
-    echo "Starting Alignment ${srr}";
-    ./STAR_2.7.10b/MacOSX_x86_64/STAR --runThreadN 6 \
-        --genomeDir STAR_index_149 \
-        --readFilesIn ${srr}_Paired_trim_1.fastq ${srr}_Paired_trim_2.fastq \
-        --outFileNamePrefix results/${srr}_ \
+    # Step 4.5: Align trimmed reads to reference genome
+    echo "Aligning reads for ${srr}..."
+    "$STAR_DIR"/STAR --runThreadN 6 \
+        --genomeDir "$GENOME_DIR" \
+        --readFilesIn "${srr}_Paired_trim_1.fastq" "${srr}_Paired_trim_2.fastq" \
+        --outFileNamePrefix results/"${srr}_" \
         --outSAMtype BAM SortedByCoordinate \
         --quantMode GeneCounts
-    echo "Removing ${srr}";
-    rm *.fastq 
+
+    # Step 4.6: Clean up fastq files
+    echo "Removing fastq files for ${srr}..."
+    rm "${srr}"_*.fastq
 done
 
-##SRR30171820 RNA-seq of N2_eft-2_1
-##SRR30171818 RNA-seq of N2_eft-2_3
-##SRR30171834 RNA-seq of N2_control_1
-##SRR30171833 RNA-seq of N2_control_2
-##SRR30171824 RNA-seq of N2_control_3
-
-    ./STAR_2.7.10b/MacOSX_x86_64/STAR --runThreadN 6 \
-        --genomeDir STAR_index_149 \
-        --readFilesIn ${srr}_Paired_trim_1.fastq ${srr}_Paired_trim_2.fastq \
-        --outFileNamePrefix results/${srr}_ \
-        --outSAMtype BAM SortedByCoordinate \
-        --quantMode GeneCounts
-    echo "Removing ${srr}";
-    rm *.fastq 
+echo "RNA-seq analysis completed!"
