@@ -5,8 +5,8 @@ This repository contains scripts related to RNA-Seq data processing, including d
 I used mamba to set up my environments, such as 
 `mamba create -n RNASeq -c bioconda fastqc star sra-tools trimmomatic samtools bedtools`
 
-## Pipeline Steps
-The pipeline performs the following steps for each sample:
+## Steps
+The script performs the following steps for each sample:
 1. Download Sequencing Data: Uses **fastq-dump** to download the sample data.
 2. Quality Control: Runs **FastQC** to assess the quality of the raw reads.
 3. Trimming Reads: Utilizes **Trimmomatic** to trim raw reads and remove adapter sequences.
