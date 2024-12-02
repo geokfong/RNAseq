@@ -3,8 +3,8 @@
 # Part 1: Installation 
 mamba install -y bioconda::sra-tools bioconda::fastqc bioconda::trimmomatic bioconda::star || {
     echo "Installation failed for STAR, downloading directly from GitHub..."
-    mv /Users/geokf/Downloads/sratoolkit.3.1.1-mac-x86_64.tar.gz .
-    tar -xvzf sratoolkit.3.1.1-mac-x86_64.tar.gz
+    curl -LO https://github.com/alexdobin/STAR/releases/download/2.7.10a/STAR-2.7.10a.tar.gz
+    tar -xvzf STAR-2.7.10a.tar.gz
 }
 
 # Part 2: Download reference genome
@@ -25,7 +25,7 @@ mkdir -p "$GENOME_DIR"
     --sjdbGTFfile ./Caenorhabditis_elegans/Ensembl/WBcel235/Annotation/Genes/genes.gtf \
     --sjdbOverhang 149
 
-# Part 4: Loop through SRR samples
+# Part 4: Loop through SRR samples, update with your sample list
 srr_samples=(SRR30171820 SRR30171818 SRR30171824 SRR30171833 SRR30171834)
 
 for srr in "${srr_samples[@]}"; do 
